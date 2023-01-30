@@ -1,0 +1,290 @@
+---
+title: "Studio Schede Tecniche Vini Mondiali"
+author: "Paravano Enrico"
+date: 'A.A. 2021/2022'
+output: 
+  ioslides_presentation: 
+    fig_width: 9
+    fig_height: 5
+    widescreen: yes
+df_print: paged
+runtime: shiny
+---
+
+```{r setup, include=FALSE, warn=FALSE}
+knitr::opts_chunk$set(
+	echo = FALSE,
+	message = FALSE,
+	warning = FALSE
+)
+library(tidyverse)
+library(ggplot2)
+library(highcharter)
+library(plotly)
+library(viridisLite)
+library(cowplot)
+library(treemap)
+library(tm)
+library(wordcloud)
+library(RColorBrewer)
+library(purrr)
+library(htmltools)
+library(knitr)
+library(ggridges) 
+library(plotrix)
+
+
+df <- read.csv('winemag-data-130k-v2.csv') #importo database
+
+group_category <- function(name){    
+  temp_df <- df
+    temp_df <- df %>% filter(points >= 80)
+  
+  var_ = temp_df[ , (names(temp_df) %in% c(name))]
+  
+  value_data = temp_df %>% 
+    select(name) %>%
+    filter(name != '' & name != ' ') %>%
+    mutate(x_var = var_) %>%
+    group_by(x_var) %>%
+    summarise(count = n())%>%
+    arrange(desc(count)) %>%
+    head(30)
+  
+  return(value_data)
+}
+hpolar <- function(x, a, c, z, type_) { 
+  highchart() %>% 
+    hc_title(text = x) %>%     
+    hc_xAxis(categories = a,
+             tickmarkPlacement = "on",
+             lineWidth = 0
+    ) %>% 
+    
+    hc_yAxis(
+      gridLineInterpolation = "polygon",
+      lineWidth = 0
+    ) %>% 
+    
+    hc_series(
+      list(
+        name = z,
+        data = c,
+        pointPlacement = "on",
+        color= '#20B2AA',
+        type = type_
+      ),
+      list(
+        name = z,
+        data = c,
+        pointPlacement = "on",
+        type = "line",
+        color= '#008080'
+      )
+      
+    )
+  
+}                   
+```
+
+```{=html}
+<style>
+slides > slide {
+  overflow-x: auto !important;
+  overflow-y: auto !important;
+}
+</style>
+```
+## Caso di Studio
+
+Si vogliono analizzare i vari dati raccolti con le schede tecniche dei vini redatte da esperti sommelier. In questa analisi parleremo nello specifico di:
+
+-   Qual è la tipologia di vino più analizzata all'interno del Database?
+
+-   Quali sono i vini più costosi e quali meno?
+
+-   Quali sono i vini con un rapporto prezzo/punteggio migliore e quali invece quelli peggiori?
+
+-   Esiste una correlazione tra il punteggio dato al vino e il suo prezzo?
+
+-   Qual è la distribuzione di quantità di vini analizzati in base alla loro fascia di prezzo?
+
+-   Qual è la nazione con la media di prezzo per vino maggiore?
+
+## Struttura del Data Base
+
+```{r}
+dati = df %>% select(country,description,points, price, province, title, variety) %>% filter(price != "NA")
+head(dati, n = 2) %>%
+  kable(position = "c", align = 'c', booktabs = FALSE, format = "markdown")
+```
+
+## Grafico varietà di vini
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+ value_data <- group_category('variety') 
+  
+  vini_piu_presenti = value_data %>%
+    select(x_var, count)%>%
+    filter(count > 2750)
+
+pie3D(vini_piu_presenti$count, mar = rep(0.7, 4),
+      labels = vini_piu_presenti$x_var,
+      explode = 0,
+      labelcex = 0.5)
+
+
+```
+
+## Vini piu costosi e meno costosi
+
+```{r}
+# vini piu costosi
+
+vini_piu_costosi = df %>%
+  select(title, price, points) %>%
+  filter(price != 'NA'  & title != '') %>%
+  arrange(desc(price)) %>%
+  head(3)
+kable(vini_piu_costosi)
+
+
+# vini meno costosi
+
+
+vini_meno_costosi = df %>%
+  select(title, price, points) %>%
+  filter(price != 'NA'  & title != '') %>%
+  arrange(price) %>%
+  head(3)
+kable(vini_meno_costosi)
+
+```
+
+## Rapporto prezzo punteggio
+
+```{r}
+
+## migori vini prezzo minore
+
+migori_vini_prezzoMin = df %>%
+  select(title, price, points) %>%
+  filter(price != 'NA' & title != '' & points >98) %>%
+  arrange( price)%>%
+head(3)
+kable(migori_vini_prezzoMin)
+
+## peggiori vini con costo maggiore
+
+peggiori_vini_prezzoMax = df %>%
+  select(title, price, points) %>%
+  filter(title != '' & points <81) %>%
+  arrange(desc(price)) %>%
+  head(3)
+kable(peggiori_vini_prezzoMax)
+
+
+```
+
+## I vini migliori ?
+
+```{r echo=FALSE, warn=FALSE}
+
+value_data = df %>%
+  select(title, price, points) %>%
+  filter(title != '' & points == 100) %>%
+  arrange(price) %>%
+  head(15)
+
+suppressWarnings(
+hpolar('Vini di alta qualità con punteggio pari a 100, ordinati in modo crescente rispetto al prezzo', value_data$title, value_data$price, 'Prezzo', "column")
+)
+```
+
+## Grafico di tendenza del prezzo dei vini rispetto al punteggio
+
+```{r echo=FALSE, warning=FALSE, paged.print=FALSE}
+int_var <- df %>% select(points, price)
+price_df <- int_var$price
+points_df <- int_var$points
+price <- scale(price_df, scale = TRUE)
+points <- scale(points_df, scale = TRUE)
+
+suppressWarnings(
+ggplot(df, aes(y=price, x=points)) + 
+  geom_point(alpha = .5,  col = '#20B2AA', size=2) + 
+  stat_smooth(geom = "smooth", method = "lm", formula = y ~ poly(x,3),  col = '#008080')+
+  theme_minimal() 
+)
+```
+
+## Analisi più accurata del prezzo rispetto a ogni punto
+
+```{r message=FALSE, warning=FALSE}
+
+  temp_df <- df
+  temp_df$points = as.character(temp_df$points)        
+  ggplot(temp_df, 
+         aes(y = points,
+             x = price,
+             fill= points,
+             color=points)) +
+    xlim(0, 500) +
+    geom_density_ridges() + 
+    theme_minimal() + 
+    theme(legend.position = "none")
+
+  
+
+
+```
+
+## Distribuzioni di vini analizzati rispetto la loro fasce di prezzo.
+
+```{r echo=FALSE, message=FALSE, paged.print=FALSE}
+
+price_df <- df %>%
+  select(price) %>%
+  count(price) 
+
+custom_colours = c("#20B2AA", "#008080" )
+
+x <- price_df$price
+hchart(x)%>%
+ hc_colors(custom_colours)
+
+
+```
+
+## Nazione con la media di prezzo maggiore per vino
+
+```{r message=FALSE, warning=FALSE}
+
+# luogo con vino piu costo 
+
+
+vini_piu_costosi = df %>%
+  select(price, country) %>%
+  filter(price != 'NA'& country !='') %>%
+  arrange(desc(price))
+
+
+  lista_citta <- vini_piu_costosi %>%
+  group_by(country)%>%
+  summarise(media = mean(price))%>%
+  arrange(desc(media))%>%
+  head(6)
+  
+  knitr::kable(lista_citta, align = "lccrr")
+
+```
+
+## Fonti
+
+Schede tecniche redatte dai sommelier <br> <https://www.kaggle.com/datasets/zynicide/wine-reviews>
+
+<p style="text-align: right; bottom: 0; position: absolute;">
+
+Grazie per l'attenzione
+
+</p>
